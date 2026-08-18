@@ -1,0 +1,3 @@
+<?php
+namespace App\Models;use App\Domain\Workflow\StepExecutionStatus;use Illuminate\Database\Eloquent\Concerns\HasUuids;use Illuminate\Database\Eloquent\Model;
+final class StepExecution extends Model {use HasUuids;protected $guarded=[];protected function casts():array{return ['status'=>StepExecutionStatus::class,'input_json'=>'array','output_json'=>'array','started_at'=>'datetime','completed_at'=>'datetime','retry_at'=>'datetime','dead_lettered_at'=>'datetime'];}public function attempts(){return $this->hasMany(ExecutionAttempt::class);}public function workflowStep(){return $this->belongsTo(WorkflowStep::class,'workflow_step_id');}public function execution(){return $this->belongsTo(WorkflowExecution::class,'workflow_execution_id');}}

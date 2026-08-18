@@ -1,0 +1,32 @@
+services:
+  app:
+    build: .
+    env_file: .env
+    ports: ["8000:8000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+  horizon:
+    build: .
+    env_file: .env
+    command: php artisan horizon
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+  scheduler:
+    build: .
+    env_file: .env
+    command: php artisan schedule:work
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+  postgres:
+    image: postgres:17-alpine
+    environment: { POSTGRES_DB: queueflow, POSTGRES_USER: app, POSTGRES_PASSWORD: app }
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U app"], interval: 5s, timeout: 3s, retries: 10 }
+    volumes: ["postgres-data:/var/lib/postgresql/data"]
+  redis:
+    image: redis:8-alpine
+    command: redis-server --appendonly yes
+    volumes: ["redis-data:/data"]
+volumes: { postgres-data: {}, redis-data: {} }

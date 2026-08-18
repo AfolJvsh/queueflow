@@ -1,0 +1,12 @@
+<?php
+namespace App\Domain\Workflow\Handlers;
+use App\Domain\Workflow\{ActionFailure,ActionHandler,ActionResult,SsrfGuard};use App\Services\{ConnectorSecretResolver,DownstreamThrottle,TemplateRenderer};use Illuminate\Support\Facades\Http;use InvalidArgumentException;
+final class HttpRequestAction implements ActionHandler
+{
+ public function __construct(private SsrfGuard $guard,private DownstreamThrottle $throttle,private ConnectorSecretResolver $secrets,private TemplateRenderer $templates){}
+ public function type():string{return 'http_request';}
+ public function validateConfig(array $c):void{if(empty($c['url']))throw new InvalidArgumentException('url is required');if(!in_array(strtoupper($c['method']??'GET'),['GET','POST','PUT','PATCH','DELETE'],true))throw new InvalidArgumentException('Unsupported HTTP method');$this->guard->assertPublicHttpUrl((string)$c['url']);}
+ public function execute(array $c,array $context,string $idempotencyKey):ActionResult{$this->validateConfig($c);$url=(string)$this->templates->render($c['url'],$context);$this->guard->assertPublicHttpUrl($url);$org=(string)($context['__organization_id']??'');$host=(string)parse_url($url,PHP_URL_HOST);$this->throttle->consume($org,$host,(int)($c['requests_per_minute']??60));$headers=$this->secrets->headers($org,(array)($this->templates->render($c['headers']??[],$context)),(array)($c['secret_headers']??[]));$headers['Idempotency-Key']=$idempotencyKey;
+  try{$response=Http::withHeaders($headers)->connectTimeout((int)($c['connect_timeout_seconds']??3))->timeout((int)($c['timeout_seconds']??15))->send(strtoupper($c['method']??'GET'),$url,['json'=>$this->templates->render($c['body']??[],$context)]);}catch(\Throwable $e){throw new ActionFailure($e->getMessage(),'transient');}
+  if($response->status()===429)throw new ActionFailure('HTTP 429 from downstream','rate_limit',(int)($response->header('Retry-After')?:5));if($response->serverError())throw new ActionFailure('Downstream HTTP '.$response->status(),'http_5xx');if($response->status()===401||$response->status()===403)throw new ActionFailure('Downstream authentication failed','authentication');if($response->clientError())throw new ActionFailure('Downstream request rejected with HTTP '.$response->status(),'validation');$body=$response->json();if($body===null)$body=['text'=>mb_substr($response->body(),0,100000)];return new ActionResult(['http'=>['status'=>$response->status(),'body'=>$body]]);}
+}

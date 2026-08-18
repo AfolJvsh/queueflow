@@ -1,0 +1,3 @@
+<?php
+namespace App\Jobs;use App\Domain\Workflow\StepExecutionStatus;use App\Models\StepExecution;use Illuminate\Bus\Queueable;use Illuminate\Contracts\Queue\ShouldQueue;use Illuminate\Foundation\Bus\Dispatchable;use Illuminate\Queue\{InteractsWithQueue,SerializesModels};
+final class DispatchDueRetrySteps implements ShouldQueue{use Dispatchable,InteractsWithQueue,Queueable,SerializesModels;public function handle():void{StepExecution::where('status',StepExecutionStatus::RetryWait->value)->where('retry_at','<=',now())->orderBy('retry_at')->limit(500)->pluck('id')->each(fn($id)=>ReleaseRetryStep::dispatch($id)->onQueue('workflows-high'));}}
